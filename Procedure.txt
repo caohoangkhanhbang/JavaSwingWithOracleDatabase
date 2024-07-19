@@ -1,0 +1,1249 @@
+------------Procedure thêm xóa sửa table (chạy trong database)
+-- LƯU Ý: Sử dụng DIRECTORY phù hợp (đường dẫn chính xác của mình) để chạy procedure thêm xóa sửa
+-- Thêm
+CREATE OR REPLACE PROCEDURE INSERT_FILE_PROCEDURE (
+    p_file_id IN NUMBER,
+    p_file_name IN VARCHAR2,
+    p_file_type IN VARCHAR2,
+    p_date_create IN DATE,
+    p_describe IN VARCHAR2,
+    p_is_deleted IN NUMBER
+) AS
+  l_bfile BFILE;
+  l_blob BLOB;
+  l_dest_offset INTEGER := 1;
+  l_src_offset INTEGER := 1;
+  l_lobmaxsize CONSTANT INTEGER := DBMS_LOB.LOBMAXSIZE;
+BEGIN
+  INSERT INTO PROJECT.FILES(F_ID, F_NAME, F_TYPE, F_DATECREATE, F_DESCRIBE, F_PATH, F_ISDELETED)
+  VALUES(p_file_id, p_file_name,p_file_type, p_date_create,p_describe, empty_blob(), p_is_deleted)
+  RETURNING F_PATH INTO l_blob;
+
+  l_bfile := BFILENAME('IMGSQL', p_file_name);
+  DBMS_LOB.fileopen(l_bfile, DBMS_LOB.file_readonly);
+  DBMS_LOB.loadblobfromfile(l_blob, l_bfile, l_lobmaxsize, l_dest_offset, l_src_offset);
+  DBMS_LOB.fileclose(l_bfile);
+  COMMIT;
+END INSERT_FILE_PROCEDURE;
+
+
+----Xóa
+CREATE OR REPLACE PROCEDURE DELETE_FILE_PROCEDURE (
+    p_file_id IN NUMBER
+) AS
+BEGIN
+    DELETE FROM PROJECT.FILES WHERE F_ID = p_file_id;
+    COMMIT;
+END DELETE_FILE_PROCEDURE;
+
+---Sửa
+CREATE OR REPLACE PROCEDURE UPDATE_FILE_PROCEDURE (
+    p_file_id IN NUMBER,
+    p_new_file_name IN VARCHAR2,
+    p_new_file_type IN VARCHAR2,
+    p_new_describe IN VARCHAR2,
+    p_new_is_deleted IN NUMBER
+) AS
+BEGIN
+    UPDATE PROJECT.FILES 
+    SET 
+        F_NAME = p_new_file_name,
+        F_TYPE = p_new_file_type,
+        F_DESCRIBE = p_new_describe,
+        F_ISDELETED = p_new_is_deleted
+    WHERE F_ID = p_file_id;
+    COMMIT;
+END UPDATE_FILE_PROCEDURE;
+
+----
+------------kill session
+CREATE OR REPLACE PROCEDURE kill_session(p_sid IN NUMBER, p_serial IN NUMBER) IS
+BEGIN
+  FOR session_rec IN (SELECT sid, serial# 
+                      FROM v$session 
+                      WHERE sid = p_sid AND serial# = p_serial) LOOP
+    EXECUTE IMMEDIATE 'ALTER SYSTEM KILL SESSION ''' || session_rec.sid || ',' || session_rec.serial# || '''';
+  END LOOP;
+END;
+-----------------XEM QUYEN ROLE dang so huu--------
+CREATE OR REPLACE PROCEDURE GET_PRIVILEGE_ROLE(
+    ROLENAME VARCHAR2,
+    PRIVILEGE_ROLE OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN PRIVILEGE_ROLE FOR
+    SELECT privilege FROM ROLE_SYS_PRIVS where role = upper(ROLENAME);
+END;
+-----------------grant role-----------
+CREATE OR REPLACE PROCEDURE grant_privilege_to_role(
+    p_privilege IN VARCHAR2,
+    p_role IN VARCHAR2
+) AS
+BEGIN
+    EXECUTE IMMEDIATE 'GRANT ' || p_privilege || ' TO ' || p_role;
+END;
+------------------create role------------
+CREATE OR REPLACE PROCEDURE create_role(
+    p_role_name IN VARCHAR2
+) AS
+BEGIN
+    EXECUTE IMMEDIATE 'CREATE ROLE ' || p_role_name;
+END;
+------------drop role-------------------
+CREATE OR REPLACE PROCEDURE drop_role(
+    p_role_name IN VARCHAR2
+) AS
+BEGIN
+    EXECUTE IMMEDIATE 'DROP ROLE ' || p_role_name;
+END;
+------------thu hòi quy?n role------------
+CREATE OR REPLACE PROCEDURE revoke_privilege_from_role(
+    p_privilege IN VARCHAR2,
+    
+    p_role IN VARCHAR2
+) AS
+BEGIN
+    EXECUTE IMMEDIATE 'REVOKE ' || p_privilege || ' FROM ' || p_role;
+    COMMIT;
+    
+EXCEPTION
+    WHEN OTHERS THEN
+      
+        ROLLBACK;
+END revoke_privilege_from_role;
+-------------THONG TIN ROLE------------
+CREATE OR REPLACE PROCEDURE GET_THONGTIN_ROLE(
+    THONGTIN_ROLE OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN THONGTIN_ROLE FOR
+    SELECT * FROM dba_roles;
+END;
+-------------------dba_user--------------
+CREATE OR REPLACE PROCEDURE GET_USERNAME_DBA_USERS(
+    USERNAME_DBA_USERS OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN USERNAME_DBA_USERS FOR
+    select*FROM dba_USERS;
+END;
+--------------SELECT TABLE TO USER-----------
+CREATE OR REPLACE PROCEDURE GET_TABLE_ON_USERS(
+    USERNAME IN VARCHAR2,
+    UTABLE_ON_USERS OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN UTABLE_ON_USERS FOR
+    SELECT table_name
+FROM all_tables WHERE owner =USERNAME;
+END;
+--------------grant oject role------------
+CREATE OR REPLACE PROCEDURE grant_access_to_table_of_user(
+    privilege_name IN VARCHAR2,
+    table_owner IN VARCHAR2,
+    table_name IN VARCHAR2,
+    grantee_username IN VARCHAR2
+)
+IS
+BEGIN
+    EXECUTE IMMEDIATE 'GRANT ' || privilege_name || ' ON ' || table_owner || '.' || table_name || ' TO ' || grantee_username;
+    COMMIT;
+END;
+----------------create user------------
+CREATE OR REPLACE PROCEDURE create_user(
+    username IN VARCHAR2,
+    password IN VARCHAR2
+)
+IS
+BEGIN
+    EXECUTE IMMEDIATE 'CREATE USER ' || username || ' IDENTIFIED BY ' || password;
+    COMMIT;
+    
+END;
+----------------------grant role to user-------------
+CREATE OR REPLACE PROCEDURE grant_role_to_user(
+    username IN VARCHAR2,
+    role_name IN VARCHAR2
+)
+IS
+BEGIN
+    EXECUTE IMMEDIATE 'GRANT ' || role_name || ' TO ' || username;
+    COMMIT;
+    
+END;
+CREATE OR REPLACE PROCEDURE create_user_with_permission(
+    p_username VARCHAR2,
+    p_password VARCHAR2
+) AS
+BEGIN
+ 
+    EXECUTE IMMEDIATE 'CREATE USER ' || p_username || ' IDENTIFIED BY ' || p_password;
+
+   
+    EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO ' || p_username;
+END create_user_with_permission;
+---------------------------ROLE_SYS_PRIVS--------------
+CREATE OR REPLACE PROCEDURE GET_ROLE_SYS (
+    ROLE_SYS OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN ROLE_SYS FOR SELECT * FROM dba_roles ;
+END;
+----------------------------------TRIGGER KI?M TRA ROLE -------------------------------------
+
+
+
+CREATE OR REPLACE TRIGGER check_role_exists_trigger
+BEFORE CREATE ON DATABASE
+DECLARE
+    role_count INTEGER;
+BEGIN
+    
+    SELECT COUNT(*)
+    INTO role_count
+    FROM dba_roles
+    WHERE ROLE = ora_dict_obj_name;
+    IF role_count > 0 THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Role ' || ora_dict_obj_name || ' already exists.');
+    END IF;
+END;
+------------------get_role-------------
+CREATE OR REPLACE PROCEDURE get_role(
+    role_name OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN role_name FOR
+    SELECT *
+    FROM dba_roles;
+END;
+CREATE OR REPLACE PROCEDURE get_tablename(
+    table_name OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN table_name FOR
+    SELECT table_name
+    FROM all_tables
+    WHERE owner = 'QUANLYFILE';
+END;
+--------------------------------
+CREATE OR REPLACE PROCEDURE check_session (
+    p_username IN VARCHAR2,
+    p_session_exists OUT NUMBER
+)
+IS
+    v_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO v_count
+    FROM v$session
+    WHERE username = p_username
+    AND STATUS!= 'KILLED';
+    IF v_count > 0 THEN
+        p_session_exists := 1;
+    ELSE
+        p_session_exists := 0;
+    END IF;
+END;
+----------------------------------------
+CREATE OR REPLACE PROCEDURE kill_user_sessions (
+    p_username IN VARCHAR2
+)
+IS
+BEGIN
+    FOR session_rec IN (SELECT sid, serial# 
+                        FROM v$session 
+                        WHERE username = p_username) LOOP
+        EXECUTE IMMEDIATE 'ALTER SYSTEM KILL SESSION ''' || session_rec.sid || ',' || session_rec.serial# || '''';
+    END LOOP;
+END kill_user_sessions;
+
+-----
+-- LUU Y:
+-- cac cau lenh thuong nhu select, insert trong procedure khong can immediate 
+-- cac cau lenh create can goi execute immediate '';
+-- tham so dau ra khi select dung con tro kieu SYS_REFCURSOR 
+
+-- tao sequence de tang tu dong truoc
+create sequence auto_increment_sequence
+start with 1
+increment by 1
+nomaxvalue  
+nocache
+nocycle;
+-- sau do goi sequen trong bang
+create table userInfomation
+(
+    U_ID number  default auto_increment_sequence.nextval primary key,
+    U_name varchar2(255),
+    U_phone varchar2(20),
+    U_image varchar2(4000)
+);
+
+
+select * from UserInfomation;
+insert into userInfomation(U_NAME, U_phone) values('Cao Hoang Khanh','B');
+select * from dba_users;
+-- XEM user
+-- SELECT SYS_CONTEXT('USERENV','SESSION_USER') FROM DUAL;
+-- SELECT TO_CHAR(SYSDATE, 'YYYY-MM-DD HH24:MI:SS') AS CURRENT_DATE_TIME FROM dual;
+-- Xem cau lenh da thao tac khi audit
+-- select sql_text from dba_common_audit_trail;
+
+--thay đ?i trên b?ng
+--alter table userInfomation modify U_image varchar(4000);
+--alter table userInfomation drop column u_email;
+--alter table userInfomation add U_phone varchar2(20);
+
+-- Lay thong tin
+create or replace procedure getUserInfomation(tbl out sys_refcursor)
+is begin
+    open tbl for select * from userInfomation;
+end;
+
+-- Procedure thêm bang user
+create or replace procedure addUserInfor(uname in varchar2, uphone in varchar2, uimage in varchar2)
+is begin
+    insert into UserInfomation(U_name, U_phone, U_image) values(uname, uphone, uimage);
+    commit;
+end addUserInfor;
+-- goi 
+-- execute adduserinfor('Nguyen Thi Mai Hen','123','D:\MahaCODE\Image\bodhi.jpg'); 
+
+-- procedure xoa bang userInfomation
+create or replace procedure deleteUserInfo(uname in varchar2) 
+is begin
+    delete from userInfomation where u_name = uname; 
+    commit;
+end deleteUserInfo;
+-- chay
+-- execute deleteUserInfo('Nguy?n Th? Mai Hên'); 
+
+-- cap nhat bang
+create or replace procedure updateUserInfo(uid in varchar2, uname in varchar2, uphone in varchar2, uimage in varchar2)
+is begin 
+    update userinfomation set u_name = uname, u_phone = uphone, u_image = uimage where u_id = uid;
+    commit;
+end updateUserInfo;
+-- chay
+--execute updateUserInfo(52, 'Nguy?n Th? Mai Hên','123','D:\MahaCODE\Image\Bodhi.jpg');
+
+-- tao tai khoan va mat khau mac dinh ==========================
+create or replace procedure taoTaik(ten in varchar2, mk in varchar2)
+is begin
+    createUser.createUserDefault(ten, mk);
+end;
+-- chay
+-- execute taoTaik('Cao Hoang Khanh Bang','bang');
+
+---------- procedure tao user voi profile
+create or replace procedure sp_taoUserVoiProfile(tenUser in varchar2, matKhau in varchar2, tenProfile in varchar2)
+is
+begin
+    execute immediate 'create user '||tenUser||' identified by '||matKhau||' profile '||tenProfile||'';
+end;
+-- chay
+-- exec sp_taouservoiprofile('xoa','x','default');
+
+-- Tao profile
+create or replace procedure matKhau_pf2
+is
+begin
+    execute immediate 'CREATE PROFILE matKhaupf3 LIMIT
+    SESSIONS_PER_USER 2
+    FAILED_LOGIN_ATTEMPTS 3
+    PASSWORD_LIFE_TIME 30
+    PASSWORD_REUSE_TIME 30
+    PASSWORD_GRACE_TIME 5';
+end;
+
+--------- Tao package tao user voi ten duoc chuan hoa
+--cap quyen xem tren bang cua sys va tao user truoc khi tao PACKAGE
+grant select on dba_users to mindfulness;
+grant create user, create session to mindfulness with admin option;
+
+-- ========================== PACKAGE ==========================
+create or replace package createUser is
+    procedure createUserDefault(userName in varchar2, passWordDefault in varchar2);
+end createUser;
+
+-- than package
+create or replace package body createUser is
+    -- Ham chuan hoa ten nguoi dung
+    function tenNguoiDungChuanHoa(tenBanDau varchar2)
+    return varchar2
+    is
+            chuDau varchar2(100);
+            tenCuoi varchar2(100) := '';
+            tenTam varchar2(100) := tenBanDau;
+            chieuDai int;
+            viTri int;
+            tenDau varchar2(100) := '';
+    begin
+        loop
+            chieuDai:= length(tenTam);
+            chuDau:=substr(tenTam,1,1);
+            viTri:=instr(tenTam, ' ');
+            if(viTri = 0) then
+                tenDau:=substr(tenTam,viTri+1,chieuDai);
+            else
+                tenCuoi:= concat(tenCuoi,chuDau);
+            end if;
+            tenTam:=substr(tenTam,viTri+1,chieuDai-viTri);
+            exit when viTri = 0;
+        end loop;
+        tenCuoi:=concat(tenDau, tenCuoi);
+        return tenCuoi;
+    end tenNguoiDungChuanHoa;
+    
+    -- Tao procedure gan quyen mat dinh cho nguoi dung
+    procedure grantUser(userName in varchar2) is
+    begin
+        execute immediate 'grant create session to '||userName||'';
+    end grantUser;
+    
+    -- Kiem tra nguoi dung da ton tai hay chua 
+    function isExistName(userNameIn in varchar2) return varchar2 is
+    tempName varchar2(255);
+    userNo int;
+    begin
+        SELECT Count(*) into userNo FROM DBA_USERS where USERNAME = userNameIn;
+        if userNo > 0 then 
+            SELECT Count(*) into userNo FROM DBA_USERS where  USERNAME like ''||userNameIn||'%';
+            tempName := concat(userNameIn, userNo);
+            return tempName;
+        else
+            return userNameIn;
+        end if;
+    end isExistName;
+    
+    -- Tao User voi mat khau, profile va quyen mac dinh (Phan cot loi)
+    procedure createUserDefault(userName in varchar2, passWordDefault in varchar2) is
+    userNameFirst varchar2(255);
+    userNameFinal varchar2(255);
+    begin
+        userNameFirst := tenNguoiDungChuanHoa(upper(userName));
+        userNameFinal := isExistName(upper(userNameFirst));
+        execute immediate 'create user '||userNameFinal||' identified by '||passWordDefault||' profile matKhaupf3';
+        grantUser(userNameFinal);
+    end createUserDefault;
+end createUser;
+
+-- chay package:
+-- execute createUser.createUserDefault('cao Hoang khanh bang','bang');
+-- kiem thu: select * from dba_users where username like '%BAN%';
+
+
+
+
+grant select on files to sys;
+select * from mindfulness.files;
+execute searchFile('xin');
+
+-- triger shutdown
+CREATE TABLE shutdown_audit_log (
+    username VARCHAR2(50),
+    shutdown_time TIMESTAMP
+);
+
+CREATE OR REPLACE TRIGGER trg_shutdown_audit
+AFTER LOGON ON DATABASE
+BEGIN
+    IF (SYS_CONTEXT('USERENV', 'SESSION_USER') = 'SYSTEM' AND
+        SYS_CONTEXT('USERENV', 'HOST') = 'SHUTDOWN') THEN
+        INSERT INTO shutdown_audit_log (username, shutdown_time)
+        VALUES (SYS_CONTEXT('USERENV', 'SESSION_USER'), SYSTIMESTAMP);
+    END IF;
+END;
+/
+
+SELECT * FROM shutdown_audit_log;
+
+-- Trigger logon tren schema
+create table log_logon
+(
+    u_id varchar2(255) primary key,
+    u_date date,
+    action varchar2(255)
+);
+
+create or replace trigger logon_trigger
+after logon on schema
+begin 
+    insert into log_logon(u_id, u_date, action)
+    values (user, sysdate, 'Log on');
+end logon_trigger;
+
+-- TAO TRIGGER AUDIT DU LIEU TREN BANG
+SELECT SYS_CONTEXT ('USERENV', 'SESSION_USER') FROM DUAL;
+SELECT SYS_CONTEXT ('USERENV', 'os_user') FROM DUAL;
+SELECT SYS_CONTEXT ('USERENV', 'IP_ADDRESS') FROM DUAL;
+SELECT SYSDATE FROM DUAL;
+
+CREATE TABLE AUDIT_FOR_UPDATE_USER
+(
+    UNAME VARCHAR2(250),
+    DATE_UPDATE DATE,
+    IP_ADDRESS VARCHAR2(50),
+    CONTENT_UPDATE VARCHAR2(500)
+);
+
+
+create or replace trigger auditPhone_trg
+after update of U_phone on userInfomation
+referencing new as new old as old
+for each row
+begin
+    if :old.U_phone != :new.U_phone then
+    insert into AUDIT_FOR_UPDATE_USER
+    values(sys_context('userenv', 'os_user'), sysdate, sys_context('userenv', 'ip_address'), :new.u_name||
+    ' sđt c?: '||:old.U_phone ||' s? m?i: '|| :new.U_phone);
+    end if;
+end;
+
+-- xem audit khi thay doi so dien thoai
+create or replace procedure getAuditUser(tbl out sys_refcursor)
+is begin
+    open tbl for select * from AUDIT_FOR_UPDATE_USER;
+end;
+
+-- l?i
+create or replace procedure getLastLogin(uname in varchar2, lastLogin out TIMESTAMP)
+is begin
+    Select LAST_LOGIN into lastLogin FROM dba_users WHERE USERNAME = uname;
+end getLastLogin;
+
+set serveroutput on
+declare lastLogin TIMESTAMP(9);
+ begin
+ getLastLogin('HR',getLastLogin);
+ dbms_output.put_line(to_char(lastLogin));
+ end;
+desc dba_users
+
+
+-----
+--=============== chay bang user SYS ===============
+-- t?o nhi?u lo?i profile (có s?n)
+
+--profile liên quan đ?n s? session trên user, T?ng lư?ng th?i gian CPU, đư?c xác đ?nh theo đơn
+--v? trăm giây, Th?i gian k?t n?i t?i đa, tính theo đơn v? phút, Th?i gian tr?, tính theo đơn 
+--v? phút
+create or replace procedure taiNguyen_pf
+is
+begin
+    execute immediate 'create profile tainguyenpf limit
+    sessions_per_user 4
+    cpu_per_session 10000
+    idle_time 60
+    connect_time 500
+    ';
+end;
+exec tainguyen_pf;
+
+-- profile v?i thông tin
+create or replace procedure taiNguyen_pf2
+is
+begin
+    execute immediate 'CREATE PROFILE tainguyenpf2 LIMIT
+    SESSIONS_PER_USER UNLIMITED
+    CPU_PER_CALL 1500
+    LOGICAL_READS_PER_CALL 1024
+    PRIVATE_SGA 18K';
+end;
+
+exec tainguyen_pf2;
+
+-- profile liên quan đến đăng nhập
+create or replace procedure matKhau_pf
+is
+begin
+    execute immediate 'CREATE PROFILE matKhaupf2 LIMIT
+    SESSIONS_PER_USER 2
+    FAILED_LOGIN_ATTEMPTS 3
+    PASSWORD_LIFE_TIME 30
+    PASSWORD_REUSE_TIME 30
+    PASSWORD_GRACE_TIME 5
+    ';
+end;
+
+exec matKhau_pf;
+
+-----------------------------------------------------
+create or replace procedure matKhau_pf2
+is
+begin
+    execute immediate 'CREATE PROFILE matKhaupf3 LIMIT
+    SESSIONS_PER_USER 2
+    FAILED_LOGIN_ATTEMPTS 3
+    PASSWORD_LIFE_TIME 30
+    PASSWORD_REUSE_TIME 30
+    PASSWORD_GRACE_TIME 5';
+end;
+
+exec matkhau_pf2;
+
+-----------------------------------------------------
+-- tạo profile
+-----------------------------------------------------
+create or replace procedure sp_taoProfile(tenProfile in varchar2, sessionN in int, connectTime in int, reUsePass in int, failLogin in int, passLock in int)
+is
+begin
+    execute immediate 'create profile '||tenProfile||' limit
+    SESSIONS_PER_USER '||sessionN||' 
+    CONNECT_TIME '||connectTime||' 
+    PASSWORD_REUSE_MAX '||reUsePass||' 
+    FAILED_LOGIN_ATTEMPTS '||failLogin||' 
+    PASSWORD_LOCK_TIME '||passLock||'';
+end;
+
+exec sp_taoProfile('KhanhBang', 2, 480, 3, 5, 1);
+exec sp_taoProfile('a', 2, 480, 2, 3, 1);
+select profile from dba_profiles;
+-----------------------------------------------------
+--Xóa user
+-----------------------------------------------------
+create or replace procedure sp_xoaUser(tenUser in varchar2)
+is
+begin
+    execute immediate 'drop user '||tenUser||'';
+end;
+
+exec sp_xoaUser('tenUser');
+
+--Xóa profile
+create or replace procedure sp_xoaProfile(tenProfile in varchar2)
+is
+begin
+    execute immediate 'drop profile '||tenProfile||'';
+end;
+
+exec xoaprofile('ten');
+
+--t?o user ch?n profile
+create or replace procedure sp_taoUserVoiProfile(tenUser in varchar2, matKhau in varchar2, tenProfile in varchar2)
+is
+begin
+    execute immediate 'create user '||tenUser||' identified by '||matKhau||' profile '||tenProfile||'';
+end;
+
+exec sp_taouservoiprofile('xoa','x','default');
+
+-- grant quyen mac dinh user
+create or replace procedure grantUser(userName in varchar2) is
+begin
+     execute immediate 'grant create session to '||userName||'';
+end grantUser;
+
+execute grantUser('xoa');
+--Thay đ?i profile c?a user
+create or replace procedure sp_SuaProfileUser(tenUser in varchar2, tenProfile in varchar2)
+is
+begin
+    execute immediate 'alter user '||tenUser||' profile '||tenProfile||'';
+end;
+
+exec sp_suaprofileuser('xoa','khanhbang');
+
+-----------------------------------------------------
+
+---------------------------------------------------------------------
+-- procedure sga, pga, process, instance, ...
+---------------------------------------------------------------------
+--sga
+create or replace procedure getSGA(table_cursor out sys_refcursor)
+is
+begin
+    open table_cursor for select * from v$sga;
+end;
+-- pga
+create or replace procedure getPGA(table_cursor out sys_refcursor)
+is
+begin
+    open table_cursor for select * from v$pgastat;
+end;
+-- process
+create or replace procedure getProcess(tbl_cursor out sys_refcursor)
+is
+begin
+    open tbl_cursor for select * from v$process;
+end;
+-- instance
+create or replace procedure getInstance(tbl_cursor out sys_refcursor)
+is
+begin
+    open tbl_cursor for select * from v$instance;
+end;
+-- database
+create or replace procedure getDatabase(tbl_cursor out sys_refcursor)
+is
+begin
+    open tbl_cursor for select * from v$database;
+end;
+-- datafile
+create or replace procedure getDatafile(tbl_cursor out sys_refcursor)
+is
+begin
+    open tbl_cursor for select * from v$datafile;
+end;
+-- control file
+create or replace procedure getControlfile(tbl_cursor out sys_refcursor)
+is
+begin
+    open tbl_cursor for select * from v$controlfile;
+end;
+--spfile
+create or replace procedure getFilestat(tbl_cursor out sys_refcursor)
+is
+begin
+    open tbl_cursor for select * from v$filestat;
+end;
+-- hi?n th? t?t c? user
+create or replace procedure getAlluser(tbl_cursor out sys_refcursor)
+is
+begin
+    open tbl_cursor for select * from dba_users;
+end;
+
+-- l?y ngư?i dùng v?i tên
+create or replace procedure getUser(namein in varchar2, tbl_cursor out sys_refcursor)
+is
+begin
+    open tbl_cursor for select * from dba_users WHERE USERNAME = namein;
+end;
+
+select * from dba_users WHERE USERNAME = 'SYS'
+
+--=============== het user SYS ===============
+
+--====================== chay bang HR ============================
+-- user HR procedure
+create or replace procedure getCountries(tbl_country out sys_refcursor)
+is
+begin
+    open tbl_country for select * from countries;
+end;
+
+commit
+-- XÓA COUNTRY
+create or replace procedure xoaCountries(country_ids char)
+is
+begin
+    delete from countries where country_id = country_ids;
+end;
+-- procedure c?nh báo audit
+create or replace procedure canhBaoAudit(username in varchar2, action in varchar2, auditcell out sys_refcursor)
+is
+begin
+    open auditcell for select count(*)AS SOLANXOA from dba_audit_trail where username = username and action_name = action;
+end;
+-- ========== ket thuc HR ==============
+
+CREATE OR REPLACE PROCEDURE GET_USER_DATA(
+    USER_DATA OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN USER_DATA FOR
+    SELECT USERNAME, USER_ID, ACCOUNT_STATUS 
+    FROM DBA_USERS 
+    WHERE DEFAULT_TABLESPACE = 'USERS';
+END;
+----------
+CREATE OR REPLACE PROCEDURE GET_USER_PRIVILEGES(
+    USERNAME_IN IN VARCHAR2,
+    PRIVILEGES OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN PRIVILEGES FOR
+    SELECT privilege
+    FROM DBA_SYS_PRIVS
+    WHERE grantee LIKE USERNAME_IN;
+END;
+
+CALL GET_USER_PRIVILEGES()
+-------
+CREATE OR REPLACE PROCEDURE GET_POLICIES(
+    POLICIES OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN POLICIES FOR
+    SELECT *
+    FROM dba_policies
+    WHERE object_owner = 'PROJECT';
+END;
+/
+----------------
+CREATE OR REPLACE PROCEDURE GET_AUDIT_DATA(
+    AUDIT_DATA OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN AUDIT_DATA FOR
+    SELECT USERNAME, OWNER, OBJ_NAME, ACTION_NAME
+    FROM DBA_AUDIT_TRAIL;
+END;
+/
+-----------------------
+CREATE OR REPLACE PROCEDURE GET_DATA_FILE(
+    FILE_IDD NUMBER,
+    DATA_FILE OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN DATA_FILE FOR
+    SELECT file_name, file_id, tablespace_name 
+    FROM dba_data_files 
+    Where File_ID=FILE_IDD;
+END;
+-----------------
+CREATE OR REPLACE PROCEDURE GET_TABLE_SPACE(
+    owner_name VARCHAR2,
+    TABLE_SPACE OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN TABLE_SPACE FOR
+    SELECT tablespace_name,segment_name,owner 
+    FROM dba_segments WHERE owner='owner_name';
+END;    
+------------------
+CREATE OR REPLACE PROCEDURE GET_FILE_ID(
+    FILEID OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN FILEID FOR
+    Select FILE_ID 
+    FROM dba_data_files;
+END;
+--------------------------
+CREATE OR REPLACE PROCEDURE GET_FILE_TABLESPACENAME(
+    TABLESPACENAME OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN TABLESPACENAME FOR
+    SELECT file_name, file_id, tablespace_name 
+    FROM dba_data_files;
+END;
+------------------------------
+---------------
+CREATE OR REPLACE PROCEDURE get_username(
+    user_name OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN user_name FOR
+    SELECT username
+    FROM all_users;
+END;
+------------
+CREATE OR REPLACE PROCEDURE get_tablename(
+    table_name OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN table_name FOR
+    SELECT table_name
+    FROM all_tables
+    WHERE owner = 'PROJECT';
+END;
+--------------------
+CREATE OR REPLACE PROCEDURE grant_user(
+    table_name VARCHAR2(40),
+    user_name VARCHAR2(40),
+    grant_name VARCHAR2(40),
+    grant_u OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN grant_u FOR
+    GRANT grant_name ON table_name TO user_name;
+END;
+
+SELECT *FROM dba_sys_privs
+WHERE grantee = 'PROJECT';
+---------------------
+
+CREATE OR REPLACE PROCEDURE CREATE_USER_PROC (
+    p_username IN VARCHAR2,
+    p_password IN VARCHAR2
+) AS
+BEGIN
+    EXECUTE IMMEDIATE 'CREATE USER ' || p_username || ' IDENTIFIED BY ' || p_password;
+    EXECUTE IMMEDIATE 'GRANT CONNECT, RESOURCE TO ' || p_username;
+    EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO ' || p_username;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Error creating user: ' || SQLERRM);
+END;
+-----------------
+CREATE OR REPLACE PROCEDURE check_session (
+    p_username IN VARCHAR2,
+    p_session_exists OUT NUMBER
+)
+IS
+    v_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO v_count
+    FROM v$session
+    WHERE username = p_username
+    AND STATUS!= 'KILLED';
+    IF v_count > 0 THEN
+        p_session_exists := 1;
+    ELSE
+        p_session_exists := 0;
+    END IF;
+END;
+
+CREATE OR REPLACE PROCEDURE kill_user_sessions (
+    p_username IN VARCHAR2
+)
+IS
+BEGIN
+    FOR session_rec IN (SELECT sid, serial# 
+                        FROM v$session 
+                        WHERE username = p_username) LOOP
+        EXECUTE IMMEDIATE 'ALTER SYSTEM KILL SESSION ''' || session_rec.sid || ',' || session_rec.serial# || '''';
+    END LOOP;
+END kill_user_sessions;
+
+
+---proc login--
+CREATE OR REPLACE PROCEDURE login_procedure(
+    p_username IN VARCHAR2,
+    p_password IN VARCHAR2,
+    p_login_status OUT VARCHAR
+) AS
+    v_password VARCHAR2(100);
+BEGIN
+    -- L?y m?t kh?u t? c? s? d? li?u d?a trên tên ng??i dùng
+    SELECT password INTO v_password
+    FROM dba_users
+    WHERE username = p_username;
+
+    -- Ki?m tra m?t kh?u
+    IF v_password = p_password THEN
+        p_login_status := 'SUCCESS';
+    ELSE
+        p_login_status := 'FAILURE';
+    END IF;
+END;
+-----PROC KILL SESSION---
+CREATE OR REPLACE PROCEDURE kill_session(p_sid IN NUMBER, p_serial IN NUMBER) IS
+BEGIN
+  FOR session_rec IN (SELECT sid, serial# 
+                      FROM v$session 
+                      WHERE sid = p_sid AND serial# = p_serial) LOOP
+    EXECUTE IMMEDIATE 'ALTER SYSTEM KILL SESSION ''' || session_rec.sid || ',' || session_rec.serial# || '''';
+  END LOOP;
+END;
+---------------------
+
+----------------XEM QUYEN ROLE ?ANG S? H?U-----------------
+CREATE OR REPLACE PROCEDURE GET_PRIVILEGE_ROLE(
+    ROLENAME VARCHAR2,
+    PRIVILEGE_ROLE OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN PRIVILEGE_ROLE FOR
+    SELECT privilege FROM ROLE_SYS_PRIVS where role = upper(ROLENAME);
+END;
+-------------grant role------------------------------
+CREATE OR REPLACE PROCEDURE grant_privilege_to_role(
+    p_privilege IN VARCHAR2,
+    p_role IN VARCHAR2
+) AS
+BEGIN
+    EXECUTE IMMEDIATE 'GRANT ' || p_privilege || ' TO ' || p_role;
+END;
+---------------create role--------------------
+CREATE OR REPLACE PROCEDURE create_role(
+    p_role_name IN VARCHAR2
+) AS
+BEGIN
+    EXECUTE IMMEDIATE 'CREATE ROLE ' || p_role_name;
+END;
+------------drop role-------------------
+CREATE OR REPLACE PROCEDURE drop_role(
+    p_role_name IN VARCHAR2
+) AS
+BEGIN
+    EXECUTE IMMEDIATE 'DROP ROLE ' || p_role_name;
+END;
+------------thu h?i quy?n role------------
+CREATE OR REPLACE PROCEDURE revoke_privilege_from_role(
+    p_privilege IN VARCHAR2,
+    
+    p_role IN VARCHAR2
+) AS
+BEGIN
+    EXECUTE IMMEDIATE 'REVOKE ' || p_privilege || ' FROM ' || p_role;
+    COMMIT;
+    
+EXCEPTION
+    WHEN OTHERS THEN
+      
+        ROLLBACK;
+END revoke_privilege_from_role;
+-------------THONG TIN ROLE------------
+CREATE OR REPLACE PROCEDURE GET_THONGTIN_ROLE(
+THONGTIN_ROLE OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN THONGTIN_ROLE FOR
+    SELECT * FROM ROLE_SYS_PRIVS;
+END;
+-------------------dba_user--------------
+CREATE OR REPLACE PROCEDURE GET_USERNAME_DBA_USERS(
+    USERNAME_DBA_USERS OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN USERNAME_DBA_USERS FOR
+    select*FROM dba_USERS;
+END;
+--------------SELECT TABLE TO USER-----------
+CREATE OR REPLACE PROCEDURE GET_TABLE_ON_USERS(
+    USERNAME IN VARCHAR2,
+    UTABLE_ON_USERS OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN UTABLE_ON_USERS FOR
+    SELECT table_name
+FROM all_tables WHERE owner =USERNAME;
+END;
+--------------grant oject role------------
+CREATE OR REPLACE PROCEDURE grant_oject_to_role(
+    privilege_name IN VARCHAR2,
+    table_name IN VARCHAR2,
+    role_name IN VARCHAR2,
+    username IN VARCHAR2
+)
+IS
+BEGIN
+    EXECUTE IMMEDIATE 'GRANT ' || privilege_name ||'ON'||username||'.'||table_name|| ' TO ' || role_name;
+    COMMIT;
+    
+EXCEPTION
+    WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('Failed to grant privilege ' || privilege_name || ' on table ' || table_name || ' to role ' || role_name || ': ' || SQLERRM);
+END;
+----------------create user------------
+CREATE OR REPLACE PROCEDURE create_user(
+    username IN VARCHAR2,
+    password IN VARCHAR2
+)
+IS
+BEGIN
+    EXECUTE IMMEDIATE 'CREATE USER ' || username || ' IDENTIFIED BY ' || password;
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('User ' || username || ' created successfully.');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Failed to create user ' || username || ': ' || SQLERRM);
+END;
+----------------------grant role to user-------------
+CREATE OR REPLACE PROCEDURE grant_role_to_user(
+    username IN VARCHAR2,
+    role_name IN VARCHAR2
+)
+IS
+BEGIN
+    EXECUTE IMMEDIATE 'GRANT ' || role_name || ' TO ' || username;
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Role ' || role_name || ' granted to user ' || username || ' successfully.');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Failed to grant role ' || role_name || ' to user ' || username || ': ' || SQLERRM);
+END;
+------------------------------------------
+CREATE OR REPLACE PROCEDURE get_username(
+    user_name OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN user_name FOR
+    SELECT username
+    FROM all_users;
+END;
+------------
+CREATE OR REPLACE PROCEDURE get_tablename(
+    table_name OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN table_name FOR
+    SELECT table_name
+    FROM all_tables
+    WHERE owner = 'QUANLYFILE';
+END;
+--------------------------------
+CREATE OR REPLACE PROCEDURE check_session (
+    p_username IN VARCHAR2,
+    p_session_exists OUT NUMBER
+)
+IS
+    v_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO v_count
+    FROM v$session
+    WHERE username = p_username
+    AND STATUS!= 'KILLED';
+    IF v_count > 0 THEN
+        p_session_exists := 1;
+    ELSE
+        p_session_exists := 0;
+    END IF;
+END;
+----------------------------------------
+CREATE OR REPLACE PROCEDURE kill_user_sessions (
+    p_username IN VARCHAR2
+)
+IS
+BEGIN
+FOR session_rec IN (SELECT sid, serial# 
+                        FROM v$session 
+                        WHERE username = p_username) LOOP
+        EXECUTE IMMEDIATE 'ALTER SYSTEM KILL SESSION ''' || session_rec.sid || ',' || session_rec.serial# || '''';
+    END LOOP;
+END kill_user_sessions;
+---------------------------ROLE_SYS_PRIVS--------------
+CREATE OR REPLACE PROCEDURE GET_ROLE_SYS (
+    ROLE_SYS OUT SYS_REFCURSOR
+)
+IS
+BEGIN
+    OPEN ROLE_SYS FOR SELECT * FROM ROLE_SYS_PRIVS ;
+END;
+
+
+---- END het c?a Kiet gui ======================================
+------- procedure t?m ki?m theo các b?ng
+
+--T?o package báo cáo th? b?y tu?n này 30/03/2024 tim kiem bang procedure KHONG kha thi
+
+
+create or replace procedure getFile(tbl out sys_refcursor) 
+is
+begin
+    open tbl for select * from mindfulness.files;
+end getFile;
+
+grant select on files to sys;
+alter user mindfulness identified by 123;
+grant create procedure to mindfulness;
+
+-----------------------------------------------
+
+
+--////////////////////// Het procedure //////////////////
+--========================== cac procedure ben tren ben duoi khong can chay =============
+
+
+
+
+
+
+
+---------------------------- PHAN TRUY VAN -----------------------
+----------------------------- KIEM TRA AUDIT THONG BAO HR ----------------------
+-------------------------------                          ----------------------
+-- D? li?u m?u
+insert into countries values('VN','Vietnam', 1);
+insert into countries values('VL','Vinh Long', 2);
+insert into countries values('AP','An Phuoc', 1);
+insert into countries values('MT','Mang Thit', 2);
+insert into countries values('TT','Thuy Thuan', 1);
+insert into countries values('NP','Nhon Phu', 2);
+
+insert into countries values('AA','Vietnam', 1);
+insert into countries values('BB','Vinh Long', 2);
+insert into countries values('CC','An Phuoc', 1);
+insert into countries values('DD','Mang Thit', 2);
+insert into countries values('EE','Thuy Thuan', 1);
+insert into countries values('FF','Nhon Phu', 2);
+select * from countries;
+delete from countries where country_id = 'NP';
+
+
+
+exec xoaCountries('VN');
+exec xoaCountries('NP');
+
+-- dùng sys xem audit
+select * from dba_audit_trail;
+--Xem câu l?nh sql c?a s? audit
+select sql_text from dba_common_audit_trail;
+--Xóa các audit đ? ghi
+truncate table aud$;
+--T?o audit delete trên b?ng countries
+AUDIT delete ON countries BY ACCESS WHENEVER SUCCESSFUL;
+--procedure ki?m tra s? l?n xóa trong audit
+select count(*)AS SOLANXOA from dba_audit_trail where username = 'HR' and action_name = 'DELETE';
+
+
+---------------------------- PHAN TRUY VAN -----------------------
+--Xem profile c?a ngư?i dùng hr đ? t?o
+select profile from dba_users where username = 'XOA';
+
+--Xem t?t c? profile c?a ngư?i dùng ?ng v?i tên
+SELECT USERNAME, PROFILE FROM DBA_USERS;
+
+--Xem tên t?t c? profile trong h? th?ng
+select profile from dba_profiles;
+--Xem toàn b? thông s? profile
+select * from dba_profiles;
+-- Gán profile cho m?t ngư?i dùng
+alter user hr profile default;
+--Xem t?t c? user
+select * from dba_users;
+
+grant connect to bang;
+
+----------- select
+select * from files;
+select * from filepermissions;
+select * from folders;
+select * from imagetable;
+select * from recyclebin;
+
+-- Xem quy?n user
+select * from role_sys_privs;
+select * from user_sys_privs;
+
+--hàm x? l? chu?i ============================= khong can chay
+select regexp_instr('khanh bang cao',' ',1,1,0,'i') from dual;
+select instr('khanh bang cao','z') from dual;
+
+declare chuDau varchar2(100);
+        tenCuoi varchar2(100) = '';
+        tenTam varchar2(100) := 'Cao Hoàng';
+        chieuDai int;
+        viTri int;
+begin
+    loop
+        chieuDai:= length(tenTam);
+        chuDau:=substr(tenTam,1,1);
+        tenCuoi:= concat(tenCuoi,chuDau);
+        viTri:=instr(tenTam, ' ');
+        tenTam:=substr(tenTam,viTri+1,chieuDai-viTri);
+        exit when viTri = 0;
+    end loop;
+    dbms_output.put_line(tenCuoi);
+end;
+
+
+commit
+
